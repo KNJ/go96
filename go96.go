@@ -55,7 +55,7 @@ func (q *Queue) Work() {
 	for i := 0; i < q.Workers; i++ {
 		var args []string
 		if q.ProxyHost != "" && q.ProxyPort != 0 {
-			args = append(args, fmt.Sprintf("--proxy-server=%s:%s", q.ProxyHost, q.ProxyPort))
+			args = append(args, fmt.Sprintf("--proxy-server=%s:%d", q.ProxyHost, q.ProxyPort))
 		}
 		driver := agouti.ChromeDriver(agouti.ChromeOptions("args", args))
 		if err := driver.Start(); err != nil {
