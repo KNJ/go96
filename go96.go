@@ -10,16 +10,16 @@ import (
 
 // Queue ...
 type Queue struct {
-	pages     []Navigation
-	Workers   int
-	ProxyHost string
-	ProxyPort int
+	pages         []Navigation
+	Workers       int
+	ChromeOptions ChromeOptions
 }
 
 // Navigation ...
 type Navigation interface {
 	EntryURL() string
 	Perform(page *Page)
+	ChromeOptions() *ChromeOptions
 }
 
 // Page ...
@@ -27,9 +27,20 @@ type Page struct {
 	*agouti.Page
 }
 
+// ChromeOptions
+type ChromeOptions struct {
+	Args []string
+}
+
 // NewQueue ...
 func NewQueue(w int) *Queue {
 	return &Queue{Workers: w}
+}
+
+// SetGlobalChromeOptions ...
+func (q *Queue) SetGlobalChromeOptions(co ChromeOptions) *Queue {
+	q.ChromeOptions = co
+	return q
 }
 
 // Configure ...
@@ -53,17 +64,8 @@ func (q *Queue) Work() {
 	job := make(chan Navigation)
 
 	for i := 0; i < q.Workers; i++ {
-		var args []string
-		if q.ProxyHost != "" && q.ProxyPort != 0 {
-			args = append(args, fmt.Sprintf("--proxy-server=%s:%d", q.ProxyHost, q.ProxyPort))
-		}
-		driver := agouti.ChromeDriver(agouti.ChromeOptions("args", args))
-		if err := driver.Start(); err != nil {
-			log.Fatal(err)
-		}
-		defer driver.Stop()
 		wg.Add(1)
-		go launch(ctx, job, driver)
+		go launch(ctx, job, q)
 	}
 
 	for _, nav := range q.pages {
@@ -74,7 +76,7 @@ func (q *Queue) Work() {
 	wg.Wait()
 }
 
-func launch(ctx context.Context, job chan Navigation, driver *agouti.WebDriver) {
+func launch(ctx context.Context, job chan Navigation, q *Queue) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -82,6 +84,17 @@ func launch(ctx context.Context, job chan Navigation, driver *agouti.WebDriver) 
 			wg.Done()
 			return
 		case nav := <-job:
+			var driver *agouti.WebDriver
+			optionArgs := append(q.ChromeOptions.Args, nav.ChromeOptions().Args...)
+			if len(optionArgs) == 0 {
+				driver = agouti.ChromeDriver()
+			} else {
+				driver = agouti.ChromeDriver(agouti.ChromeOptions("args", optionArgs))
+			}
+			if err := driver.Start(); err != nil {
+				log.Fatal(err)
+			}
+			defer driver.Stop()
 			page, err := newPage(driver)
 			fmt.Println(nav.EntryURL())
 			if err != nil {
