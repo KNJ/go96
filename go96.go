@@ -10,16 +10,22 @@ import (
 
 // Queue ...
 type Queue struct {
-	pages         []Navigation
+	pages         []*Navigation
 	Workers       int
 	ChromeOptions ChromeOptions
 }
 
+type chromeBrowser interface {
+	Perform(page *Page, nav *Navigation)
+	Options() ChromeOptions
+}
+
 // Navigation ...
-type Navigation interface {
-	EntryURL() string
-	Perform(page *Page)
-	ChromeOptions() *ChromeOptions
+type Navigation struct {
+	CurrentPage   *Page
+	Browser       chromeBrowser
+	chromeOptions *ChromeOptions
+	entryURL      string
 }
 
 // Page ...
@@ -43,25 +49,21 @@ func (q *Queue) SetGlobalChromeOptions(co ChromeOptions) *Queue {
 	return q
 }
 
-// Configure ...
-func (q *Queue) Configure(options ...func(*Queue)) *Queue {
-	for _, option := range options {
-		option(q)
-	}
-	return q
-}
-
 // Add ...
-func (q *Queue) Add(nav Navigation) {
+func (q *Queue) Add(url string, browser chromeBrowser, options *ChromeOptions) {
+	nav := &Navigation{
+		Browser:       browser,
+		chromeOptions: options,
+		entryURL:      url,
+	}
 	q.pages = append(q.pages, nav)
 }
 
 var wg sync.WaitGroup
 
-// Work ...
 func (q *Queue) Work() {
 	ctx, cancel := context.WithCancel(context.Background())
-	job := make(chan Navigation)
+	job := make(chan *Navigation)
 
 	for i := 0; i < q.Workers; i++ {
 		wg.Add(1)
@@ -76,7 +78,7 @@ func (q *Queue) Work() {
 	wg.Wait()
 }
 
-func launch(ctx context.Context, job chan Navigation, q *Queue) {
+func launch(ctx context.Context, job chan *Navigation, q *Queue) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -84,28 +86,33 @@ func launch(ctx context.Context, job chan Navigation, q *Queue) {
 			wg.Done()
 			return
 		case nav := <-job:
-			var driver *agouti.WebDriver
-			optionArgs := append(q.ChromeOptions.Args, nav.ChromeOptions().Args...)
-			if len(optionArgs) == 0 {
-				driver = agouti.ChromeDriver()
-			} else {
-				driver = agouti.ChromeDriver(agouti.ChromeOptions("args", optionArgs))
-			}
-			if err := driver.Start(); err != nil {
-				log.Fatal(err)
-			}
-			defer driver.Stop()
-			page, err := newPage(driver)
-			fmt.Println(nav.EntryURL())
-			if err != nil {
-				log.Fatal(err)
-			}
-			if err := page.Navigate(nav.EntryURL()); err != nil {
-				log.Fatal(err)
-			}
-			nav.Perform(page)
+			dequeue(nav, q)
 		}
 	}
+}
+
+func dequeue(nav *Navigation, q *Queue) {
+	var driver *agouti.WebDriver
+	optionArgs := append(q.ChromeOptions.Args, nav.chromeOptions.Args...)
+	if len(optionArgs) == 0 {
+		driver = agouti.ChromeDriver()
+	} else {
+		driver = agouti.ChromeDriver(agouti.ChromeOptions("args", optionArgs))
+	}
+	if err := driver.Start(); err != nil {
+		log.Fatal(err)
+	}
+	defer driver.Stop()
+	page, err := newPage(driver)
+	nav.CurrentPage = page
+	fmt.Println(nav.entryURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := page.Navigate(nav.entryURL); err != nil {
+		log.Fatal(err)
+	}
+	nav.Browser.Perform(page, nav)
 }
 
 func newPage(driver *agouti.WebDriver) (*Page, error) {
