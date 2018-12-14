@@ -15,7 +15,7 @@ type Queue struct {
 	ChromeOptions ChromeOptions
 }
 
-type chromeBrowser interface {
+type ChromeBrowser interface {
 	Perform(page *Page, nav *Navigation)
 	Options() ChromeOptions
 }
@@ -23,7 +23,7 @@ type chromeBrowser interface {
 // Navigation ...
 type Navigation struct {
 	CurrentPage   *Page
-	Browser       chromeBrowser
+	Browser       ChromeBrowser
 	chromeOptions *ChromeOptions
 	entryURL      string
 }
@@ -50,7 +50,7 @@ func (q *Queue) SetGlobalChromeOptions(co ChromeOptions) *Queue {
 }
 
 // Add ...
-func (q *Queue) Add(url string, browser chromeBrowser, options *ChromeOptions) {
+func (q *Queue) Add(url string, browser ChromeBrowser, options *ChromeOptions) {
 	nav := &Navigation{
 		Browser:       browser,
 		chromeOptions: options,
