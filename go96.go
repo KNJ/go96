@@ -16,7 +16,7 @@ type Queue struct {
 }
 
 type ChromeBrowser interface {
-	Perform(page *Page, nav *Navigation)
+	Perform(nav *Navigation)
 	Options() ChromeOptions
 }
 
@@ -112,7 +112,7 @@ func dequeue(nav *Navigation, q *Queue) {
 	if err := page.Navigate(nav.entryURL); err != nil {
 		log.Fatal(err)
 	}
-	nav.Browser.Perform(page, nav)
+	nav.Browser.Perform(nav)
 }
 
 func newPage(driver *agouti.WebDriver) (*Page, error) {
